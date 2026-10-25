@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Mask Monitoring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-800 mb-8">AI Mask Detection Dashboard</h1>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Cột Camera -->
+            <div class="lg:col-span-2 bg-white rounded-lg shadow-md p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-700">Live Camera</h2>
+                </div>
+                
+                <!-- Box nhập IP -->
+                <div class="flex gap-3 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <input type="text" id="camera-ip" 
+                           placeholder="Nhập IP ESP32 (VD: 192.168.1.15 hoặc 0 để test Webcam)" 
+                           class="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                           value="192.168.1." />
+                    <button onclick="connectCamera()" 
+                            id="btn-connect"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium transition-colors shadow-sm">
+                        Kết nối
+                    </button>
+                    <button onclick="disconnectCamera()" 
+                            id="btn-disconnect"
+                            class="hidden bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-md font-medium transition-colors shadow-sm">
+                        Ngắt
+                    </button>
+                </div>
+
+                <div class="bg-black rounded-lg overflow-hidden flex items-center justify-center min-h-[400px] border border-gray-300 relative">
+                    <!-- Text giữ chỗ ban đầu -->
+                    <span id="placeholder-text" class="text-gray-400 absolute">Vui lòng nhập IP và bấm Kết nối...</span>
+                    <!-- Thẻ img src để trống, sẽ được JS gán link khi bấm nút -->
+                    <img id="video-stream" src="" class="w-full h-auto relative z-10 hidden" />
+                </div>
+            </div>
+
+            <!-- Cột Monitoring Log -->
+            <div class="bg-white rounded-lg shadow-md p-4 flex flex-col h-[550px]">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-700">Detection Logs</h2>
+                    <button onclick="clearLogs()" 
+                            title="Xóa toàn bộ log hiện tại (hoặc bấm F5 trên bàn phím)"
+                            class="text-xs bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 border border-gray-300 hover:border-red-300 px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Xóa log (F5)
+                    </button>
+                </div>
+                <div class="overflow-y-auto flex-1 pr-2 space-y-2" id="log-container">
+                    <div class="text-center text-gray-400 py-8 text-sm">Chưa có log nhận diện nào</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ipInput = document.getElementById('camera-ip');
+        const videoEl = document.getElementById('video-stream');
+        const placeholderEl = document.getElementById('placeholder-text');
+        const btnConnect = document.getElementById('btn-connect');
+        const btnDisconnect = document.getElementById('btn-disconnect');
+
+        // Khôi phục IP đã nhập trước đó nếu có
+        const savedIp = localStorage.getItem('camera_ip');
+        if (savedIp) {
+            ipInput.value = savedIp;
+        }
+        ipInput.addEventListener('change', () => {
+            localStorage.setItem('camera_ip', ipInput.value.trim());
+        });
+
+        // Hàm kết nối camera
+        function connectCamera() {
+            const ip = ipInput.value.trim();
+
+            if (ip) {
+                localStorage.setItem('camera_ip', ip);
+                sessionStorage.setItem('camera_connected', 'true');
+
+                // Ẩn chữ giữ chỗ, hiện thẻ img
+                placeholderEl.classList.add('hidden');
+                videoEl.classList.remove('hidden');
+                btnDisconnect.classList.remove('hidden');
+                
+                // Trỏ src của ảnh về API backend kèm theo IP
+                videoEl.src = `/video_feed?ip=${encodeURIComponent(ip)}`;
+            } else {
+                alert("Bạn chưa nhập địa chỉ IP!");
+            }
+        }
+
+        // Hàm ngắt camera
+        function disconnectCamera() {
+            sessionStorage.removeItem('camera_connected');
+            videoEl.src = "";
+            videoEl.classList.add('hidden');
+            placeholderEl.classList.remove('hidden');
+            btnDisconnect.classList.add('hidden');
+        }
+
+        // Đổi màu log
+        function getStatusColor(status) {
+            const s = (status || "").toLowerCase();
+            if (s === "mask" || s.includes("dung") || s === "with_mask") {
+                return "bg-green-100 text-green-800 border-green-200";
+            }
+            if (s === "wrong mask" || s.includes("sai") || s === "incorrectly_worn_mask") {
+                return "bg-yellow-100 text-yellow-800 border-yellow-200";
+            }
+            return "bg-red-100 text-red-800 border-red-200";
+        }
+
+        // Hàm xóa toàn bộ log
+        async function clearLogs() {
+            try {
+                await fetch('/api/logs/clear', { method: 'POST' });
+                const container = document.getElementById('log-container');
+                if (container) {
+                    container.innerHTML = '<div class="text-center text-gray-400 py-8 text-sm">Chưa có log nhận diện nào</div>';
+                }
+            } catch (error) {
+                console.error("Lỗi khi xóa log:", error);
+            }
+        }
+
+        // Bấm phím F5: xóa sạch log trước khi tải lại trang
+        window.addEventListener('keydown', function (e) {
+            if (e.key === 'F5' || e.keyCode === 116) {
+                fetch('/api/logs/clear', { method: 'POST', keepalive: true });
+            }
+        });
+
+        // Lấy log định kỳ
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+                const container = document.getElementById('log-container');
+                
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="text-center text-gray-400 py-8 text-sm">Chưa có log nhận diện nào</div>';
+                    return;
+                }
+
+                container.innerHTML = ''; 
+                
+                logs.forEach(log => {
+                    const logEl = document.createElement('div');
+                    logEl.className = `p-3 rounded-md border flex justify-between items-center text-sm font-medium ${getStatusColor(log.status)}`;
+                    logEl.innerHTML = `
+                        <span class="text-gray-600 w-20">${log.time}</span>
+                        <span class="flex-1">${log.status}</span>
+                        <span class="font-bold">${log.confidence}</span>
+                    `;
+                    container.appendChild(logEl);
+                });
+            } catch (error) {
+                console.error("Error fetching logs:", error);
+            }
+        }, 1000);
+
+        // Khôi phục kết nối nếu trước khi F5 camera đang chạy
+        if (sessionStorage.getItem('camera_connected') === 'true' && ipInput.value.trim()) {
+            connectCamera();
+        }
+    </script>
+</body>
+</html>
